@@ -79,8 +79,7 @@ contract ApplicationRegistry is Ownable,Pausable,IApplicationRegistry {
         _;
     }
 
-    constructor(IGrants _grantsReg,IWorkspaceRegistry _workspaceReg){
-        grantsReg = _grantsReg;
+    constructor(IWorkspaceRegistry _workspaceReg){
         workspaceReg = _workspaceReg;
     }
 
@@ -92,7 +91,7 @@ contract ApplicationRegistry is Ownable,Pausable,IApplicationRegistry {
         uint256[] memory _milestonePayments
     ) external {
         require(!applicantGrant[msg.sender][_grantAddress], "ApplicationSubmit: Already applied to grant once");
-        require(grantsReg.active(), "ApplicationSubmit: Invalid grant");
+        require(grantsReg.getActive(), "ApplicationSubmit: Invalid grant");
         
         uint256 id = applicationCount.current();
         applicationCount.increment();
@@ -158,10 +157,10 @@ contract ApplicationRegistry is Ownable,Pausable,IApplicationRegistry {
         ) {
             application.state = _state;
 
-            string memory paymentType = IGrants(_grantAddress).paymentType();
+            string memory paymentType = IGrants(_grantAddress).getPaymentType();
 
             if(_state == ApplicationState.Approved && keccak256(abi.encodePacked("UPFRONT")) == keccak256(abi.encodePacked(paymentType))){
-                uint256 amount = IGrants(_grantAddress).amount();
+                uint256 amount = IGrants(_grantAddress).getAmount();
                 IGrants(_grantAddress).payApplicant(application.owner,amount);
 
             }
@@ -224,10 +223,10 @@ contract ApplicationRegistry is Ownable,Pausable,IApplicationRegistry {
         if (currentState == MilestoneState.Submitted || currentState == MilestoneState.Requested) {
             applicationMilestones[_applicationId][_milestoneId] = MilestoneState.Approved;
 
-            string memory paymentType = IGrants(_grantAddress).paymentType();
+            string memory paymentType = IGrants(_grantAddress).getPaymentType();
 
             if(keccak256(abi.encodePacked("MILESTONE")) == keccak256(abi.encodePacked(paymentType))){
-                uint256 amount = IGrants(_grantAddress).amount();
+                uint256 amount = IGrants(_grantAddress).getAmount();
                 IGrants(_grantAddress).payApplicant(application.owner,amount);
             }
         } else {
@@ -248,6 +247,9 @@ contract ApplicationRegistry is Ownable,Pausable,IApplicationRegistry {
 
     }
 
+    function setGrantReg(IGrants _grantsReg) external onlyOwner {
+        grantsReg = _grantsReg;
+    }
 
     function getApplicationOwner(uint256 _applicationId) external view override returns (address) {
         Application memory application = applications[_applicationId];

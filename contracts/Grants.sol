@@ -248,5 +248,10 @@ contract Grant is Ownable,Pausable,IGrants{
     function getAmount() external view returns (uint256){
         return amount;
     }
+
+    function getMetadataHash() external view returns (string memory){
+        return metadataHash;
+    }
+
 }
  

@@ -13,7 +13,7 @@ contract GrantFactory is Ownable,Pausable,IGrantFactory {
 
     IApplicationRegistry public applicationReg;
 
-    event GrantCreated(address grantAddress, uint256 workspaceId, string metadataHash, uint256 time);
+    IWorkspaceRegistry public workspaceReg;
 
     event GrantCreated(
         address grantAddress,
@@ -42,6 +42,10 @@ contract GrantFactory is Ownable,Pausable,IGrantFactory {
         _;
     }
 
+    constructor(IWorkspaceRegistry _workspaceReg){
+        workspaceReg = _workspaceReg;
+    }
+
     function createGrant(
         uint256 _workspaceId,
         string memory _metadataHash,
@@ -53,7 +57,7 @@ contract GrantFactory is Ownable,Pausable,IGrantFactory {
         string memory _paymentType
     ) external whenNotPaused onlyWorkspaceAdmin(_workspaceId) returns (address) {
         
-        address _grantAddress = address(new Grant(_workspaceId,_metadataHash,_workspaceReg,_applicationReg,address(this),_reviewers,_amount,_token));
+        address _grantAddress = address(new Grant(_workspaceId,_metadataHash,_workspaceReg,_applicationReg,this,_reviewers,_amount,_token,_paymentType));
 
         emit GrantCreated(
             _grantAddress,
@@ -72,8 +76,8 @@ contract GrantFactory is Ownable,Pausable,IGrantFactory {
         string memory _metadataHash
     ) external onlyWorkspaceAdmin(_workspaceId) {
         IGrants(grantAddress).updateGrant(_metadataHash);
-        bool active = IGrants(grantAddress).active();
-        address[] memory reviewers = IGrants(grantAddress).reviewers();
+        bool active = IGrants(grantAddress).getActive();
+        address[] memory reviewers = IGrants(grantAddress).getReviewers();
         emit GrantUpdatedFromFactory(grantAddress, _workspaceId, _metadataHash, active, block.timestamp,reviewers);
     }
 
@@ -85,8 +89,8 @@ contract GrantFactory is Ownable,Pausable,IGrantFactory {
     ) external {
         require(_workspaceReg.isWorkspaceAdmin(_workspaceId, msg.sender), "GrantUpdate: Unauthorised");
         IGrants(grantAddress).updateGrantAccessibility(_canAcceptApplication);
-        string memory metadataHash = IGrants(grantAddress).metadataHash();
-        address[] memory reviewers = IGrants(grantAddress).reviewers();
+        string memory metadataHash = IGrants(grantAddress).getMetadataHash();
+        address[] memory reviewers = IGrants(grantAddress).getReviewers();
         emit GrantUpdatedFromFactory(grantAddress, _workspaceId, metadataHash, _canAcceptApplication, block.timestamp,reviewers);
     }
 

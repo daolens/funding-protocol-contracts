@@ -15,4 +15,10 @@ interface IGrants {
     function getPaymentType() external view returns (string memory);
 
     function getAmount() external view returns (uint256);
+
+    function updateGrant(string memory _metadataHash) external;
+        
+    function updateGrantAccessibility(bool _canAcceptApplication) external;
+
+    function getMetadataHash() external view returns (string memory);
 }
