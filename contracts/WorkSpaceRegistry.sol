@@ -5,7 +5,8 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/Counters.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 import "./interfaces/IWorkSpaceRegistry.sol";
-
+import "./interfaces/IGrants.sol";
+import "./interfaces/IGrantFactory.sol";
 
 contract WorkspaceRegistry is Ownable,Pausable,IWorkspaceRegistry{
 
@@ -17,7 +18,7 @@ contract WorkspaceRegistry is Ownable,Pausable,IWorkspaceRegistry{
     }   
 
     struct Safe {
-        bytes32 _address;
+        string _address;
         uint256 chainId;
     }
 
@@ -26,21 +27,33 @@ contract WorkspaceRegistry is Ownable,Pausable,IWorkspaceRegistry{
         address owner;
         string metadataHash;
         Safe safe;
+        uint256 applicationCount;
+        uint256 grantCount;
+        uint256 totalFunds;
+        uint256 totalAmountSpentGrant;
+    }
+    struct Grant {
+        uint256 numApplicants;
+        string metadataHash;
+        uint256 balance;
+        address grantAddress;
+        uint256 amountSpent;
     }
 
     mapping(uint256 => WorkSpace) public WorkSpaces;
-
+    
     mapping(uint256 => mapping(address => bytes32)) public memberRoles;
 
+    WorkSpace[] workSpacesArr;
     // **** Events ****
 
-    event WorkspaceCreated(uint256 indexed id, address indexed owner, string metadataHash, uint256 time,bytes32 safeAddress,uint256 safeChainId);
+    event WorkspaceCreated(uint256 indexed id, address indexed owner, string metadataHash, uint256 time,string safeAddress,uint256 safeChainId);
 
     event WorkspaceUpdated(uint256 indexed id, address indexed owner, string metadataHash, uint256 time);
 
     event WorkspaceSafeUpdated(
         uint256 indexed id,
-        bytes32 safeAddress,
+        string safeAddress,
         uint256 safeChainId,
         uint256 time
     );
@@ -54,14 +67,18 @@ contract WorkspaceRegistry is Ownable,Pausable,IWorkspaceRegistry{
 
     function createWorkspace(
         string memory _metadataHash,
-        bytes32 _safeAddress,
+        string memory _safeAddress,
         uint256 _safeChainId
-    ) external whenNotPaused {
+    ) external whenNotPaused returns(uint256) {
         uint256 id = workspaceCount.current();
         workspaceCount.increment();
-        WorkSpaces[id] = WorkSpace(id,msg.sender,_metadataHash,Safe(_safeAddress, _safeChainId));
+        
+        WorkSpaces[id] = WorkSpace(id,msg.sender,_metadataHash,Safe(_safeAddress, _safeChainId),0,0,0,0);
+        workSpacesArr.push(WorkSpaces[id]);
+
         _setRole(id,msg.sender,0,true);
         emit WorkspaceCreated(id, msg.sender, _metadataHash, block.timestamp, _safeAddress,_safeChainId);
+        return id;
     }
 
     function _setRole(
@@ -101,24 +118,85 @@ contract WorkspaceRegistry is Ownable,Pausable,IWorkspaceRegistry{
     function updateWorkspaceMetadata(uint96 _id, string memory _metadataHash)
         external
         whenNotPaused
-        onlyWorkspaceAdmin(_id)
-    {
+        onlyWorkspaceAdmin(_id){
         WorkSpace storage workspace = WorkSpaces[_id];
         workspace.metadataHash = _metadataHash;
+        for(uint256 i = 0;i < workSpacesArr.length;i++){
+            if(workSpacesArr[i].id == _id){
+                workSpacesArr[i].metadataHash = _metadataHash;
+            }
+        }
         emit WorkspaceUpdated(workspace.id, workspace.owner, workspace.metadataHash, block.timestamp);
     }
 
     function updateWorkspaceSafe(
         uint256 _id,
-        bytes32 _safeAddress,
+        string memory _safeAddress,
         uint256 _safeChainId
     ) external whenNotPaused onlyWorkspaceAdmin(_id) {
         WorkSpace storage workspace = WorkSpaces[_id];
         workspace.safe = Safe(_safeAddress, _safeChainId);
+
         emit WorkspaceSafeUpdated(_id, _safeAddress, _safeChainId, block.timestamp);
     }
 
     function isWorkspaceAdmin(uint256 _id, address _address) external view override returns (bool) {
         return _checkRole(_id, _address, 0);
     }
+
+    function fetchWorkSpaces(address _grantFactory) external view returns (WorkSpace[] memory,uint256[] memory,uint256[] memory) {
+        uint256[] memory totalAmts = new uint256[](workSpacesArr.length);
+        uint256[] memory amtSpends = new uint256[](workSpacesArr.length);
+
+        for(uint256 i = 0;i < workSpacesArr.length;i++){
+            address[] memory grantAddress = IGrantFactory(_grantFactory).getWorkSpaceGrantMap(workSpacesArr[i].id);
+            uint256 totalAmt;
+            uint256 amtSpend;
+            for(uint256 j = 0;j < grantAddress.length;j++){
+                totalAmt += IGrants(grantAddress[i]).getAmount();
+                amtSpend += IGrants(grantAddress[i]).getAmountSpent();
+            }
+            totalAmts[i] = totalAmt;
+            amtSpends[i] = amtSpend;
+        }
+        return (workSpacesArr,totalAmts,amtSpends);
+    }
+
+    function fetchWorkSpaceDetails(uint256 _id,address _grantFactory) external view returns (WorkSpace memory,Grant[] memory) {
+
+        address[] memory _grantAddress = IGrantFactory(_grantFactory).getWorkSpaceGrantMap(_id);
+        uint256 len = _grantAddress.length;
+        Grant[] memory grantsDetails = new Grant[](len);
+
+        for(uint256 i = 0;i < _grantAddress.length;i++){
+            (uint256 numApplicants,string memory metadataHash,uint256 balance,uint256 amountSpent) = IGrants(_grantAddress[i]).getDetails();
+            grantsDetails[i] = Grant(numApplicants,metadataHash,balance,_grantAddress[i],amountSpent);
+        }
+        return (WorkSpaces[_id],grantsDetails);
+    }
+
+    function increaseApplicationCount(uint256 _workspaceId) external override {
+        WorkSpaces[_workspaceId].applicationCount++;
+        for(uint256 i = 0;i < workSpacesArr.length;i++){
+            if(workSpacesArr[i].id == _workspaceId){
+                workSpacesArr[i] = WorkSpaces[_workspaceId];
+                break;
+            }
+        }
+    }
+
+    function increaseGrantCount(uint256 _workspaceId) external override {
+        WorkSpaces[_workspaceId].grantCount++;
+        for(uint256 i = 0;i < workSpacesArr.length;i++){
+            if(workSpacesArr[i].id == _workspaceId){
+                workSpacesArr[i] = WorkSpaces[_workspaceId];
+                break;
+            }
+        }
+    }
+
+    function getMetaDataHash(uint256 _workspaceId) external view override returns(string memory){
+        return WorkSpaces[_workspaceId].metadataHash;
+    }
+
 }

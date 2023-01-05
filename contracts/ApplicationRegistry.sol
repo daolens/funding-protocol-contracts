@@ -36,7 +36,20 @@ contract ApplicationRegistry is Ownable,Pausable,IApplicationRegistry {
         string metadataHash;
         ApplicationState state;
         uint256[] milestonePayment;
+        uint256 totalFunds;
     }
+
+    struct RejectAppPend{
+        uint256 applicationId;
+        uint256 time;
+    }   
+
+    struct MilestoneStateApp{
+        MilestoneState state;
+        string reviewersHash;
+        string applicantHash;
+    }
+    RejectAppPend[] rejectAppPending;
 
     using Counters for Counters.Counter;
     Counters.Counter private applicationCount;
@@ -44,9 +57,9 @@ contract ApplicationRegistry is Ownable,Pausable,IApplicationRegistry {
 
     mapping(uint256 => Application) public applications;
     mapping(address => mapping(address => bool)) private applicantGrant;
-    mapping(uint256 => mapping(uint256 => MilestoneState)) public applicationMilestones;
-
-
+    mapping(uint256 => mapping(uint256 => MilestoneStateApp)) public applicationMilestones;
+    mapping(address => Application[]) creatorApplicationMap;
+    mapping(uint256 => string) applicationsReasons;
     // **** Events ****
 
     event ApplicationSubmitted(
@@ -68,12 +81,13 @@ contract ApplicationRegistry is Ownable,Pausable,IApplicationRegistry {
     );
 
     event MilestoneUpdated(uint256 _id, uint256 _milestoneId, MilestoneState _state, string _metadataHash, uint256 _time,address _grantId,uint256 _workspaceId);
-    
+
+    event ApplicationRejectStatusReverted(uint256 _applicationId,address _grantAddress,uint256 _time,ApplicationState _state);
     // **** Modifier ****
 
-    modifier onlyGrantAdminOrReviewer() {
+    modifier onlyGrantAdminOrReviewer(address _grantAddress) {
         require(
-            grantsReg.isGrantAdminOrReviewer(msg.sender),
+            IGrants(_grantAddress).isGrantAdminOrReviewer(msg.sender),
             "Unauthorised: Neither an admin nor a reviewer"
         );
         _;
@@ -88,10 +102,11 @@ contract ApplicationRegistry is Ownable,Pausable,IApplicationRegistry {
         uint256 _workspaceId,
         string memory _metadataHash,
         uint256 _milestoneCount,
-        uint256[] memory _milestonePayments
-    ) external {
+        uint256[] memory _milestonePayments,
+        uint256 _totalAmount
+    ) external returns(uint256) {
         require(!applicantGrant[msg.sender][_grantAddress], "ApplicationSubmit: Already applied to grant once");
-        require(grantsReg.getActive(), "ApplicationSubmit: Invalid grant");
+        require(IGrants(_grantAddress).getActive(), "ApplicationSubmit: Invalid grant");
         
         uint256 id = applicationCount.current();
         applicationCount.increment();
@@ -104,12 +119,16 @@ contract ApplicationRegistry is Ownable,Pausable,IApplicationRegistry {
             0,
             _metadataHash,
             ApplicationState.Submitted,
-            _milestonePayments
+            _milestonePayments,
+            _totalAmount
         );
+        creatorApplicationMap[msg.sender].push(applications[id]);
+        workspaceReg.increaseApplicationCount(_workspaceId);
         applicantGrant[msg.sender][_grantAddress] = true;
 
         emit ApplicationSubmitted(id, _grantAddress, msg.sender, _metadataHash, _milestoneCount, block.timestamp);
-        grantsReg.incrementApplicant();
+        IGrants(_grantAddress).incrementApplicant();
+        return id;
     }
 
     function updateApplicationMetadata(
@@ -125,7 +144,7 @@ contract ApplicationRegistry is Ownable,Pausable,IApplicationRegistry {
         );
 
         for (uint256 i = 0; i < application.milestoneCount; i++) {
-            applicationMilestones[_applicationId][i] = MilestoneState.Submitted;
+            applicationMilestones[_applicationId][i].state = MilestoneState.Submitted;
         }
         application.milestoneCount = _milestoneCount;
         application.metadataHash = _metadataHash;
@@ -146,7 +165,7 @@ contract ApplicationRegistry is Ownable,Pausable,IApplicationRegistry {
         ApplicationState _state,
         string memory _reasonMetadataHash,
         address _grantAddress
-    ) public onlyGrantAdminOrReviewer {
+    ) public onlyGrantAdminOrReviewer(_grantAddress) {
         Application storage application = applications[_applicationId];
         require(application.workspaceId == _workspaceId, "ApplicationStateUpdate: Invalid workspace");
 
@@ -155,16 +174,18 @@ contract ApplicationRegistry is Ownable,Pausable,IApplicationRegistry {
             (application.state == ApplicationState.Submitted && _state == ApplicationState.Approved) ||
             (application.state == ApplicationState.Submitted && _state == ApplicationState.Rejected)
         ) {
-            application.state = _state;
+            if(_state != ApplicationState.Rejected){
+                application.state = _state;
+                string memory paymentType = IGrants(_grantAddress).getPaymentType();
 
-            string memory paymentType = IGrants(_grantAddress).getPaymentType();
-
-            if(_state == ApplicationState.Approved && keccak256(abi.encodePacked("UPFRONT")) == keccak256(abi.encodePacked(paymentType))){
-                uint256 amount = IGrants(_grantAddress).getAmount();
-                IGrants(_grantAddress).payApplicant(application.owner,amount);
-
+                if(_state == ApplicationState.Approved && keccak256(abi.encodePacked("UPFRONT")) == keccak256(abi.encodePacked(paymentType))){
+                    IGrants(_grantAddress).payApplicant(application.owner,application.totalFunds,_applicationId);
+                }
             }
-
+            else {
+                rejectAppPending.push(RejectAppPend(_applicationId,block.timestamp + 3 days));
+            }
+            applicationsReasons[_applicationId] = _reasonMetadataHash;
         } else {
             revert("ApplicationStateUpdate: Invalid state transition");
         }
@@ -191,10 +212,12 @@ contract ApplicationRegistry is Ownable,Pausable,IApplicationRegistry {
         require(application.state == ApplicationState.Approved, "MilestoneStateUpdate: Invalid application state");
         require(_milestoneId < application.milestoneCount, "MilestoneStateUpdate: Invalid milestone id");
         require(
-            applicationMilestones[_applicationId][_milestoneId] == MilestoneState.Submitted,
+            applicationMilestones[_applicationId][_milestoneId].state == MilestoneState.Submitted,
             "MilestoneStateUpdate: Invalid state transition"
         );
-        applicationMilestones[_applicationId][_milestoneId] = MilestoneState.Requested;
+        applicationMilestones[_applicationId][_milestoneId].state = MilestoneState.Requested;
+        applicationMilestones[_applicationId][_milestoneId].applicantHash = _reasonMetadataHash;
+
         emit MilestoneUpdated(
             _applicationId,
             _milestoneId,
@@ -212,22 +235,21 @@ contract ApplicationRegistry is Ownable,Pausable,IApplicationRegistry {
         uint256 _workspaceId,
         address _grantAddress,
         string memory _reasonMetadataHash
-    ) external onlyGrantAdminOrReviewer {
+    ) external onlyGrantAdminOrReviewer(_grantAddress) {
         
         Application storage application = applications[_applicationId];
         require(application.workspaceId == _workspaceId, "ApplicationStateUpdate: Invalid workspace");
         require(application.state == ApplicationState.Approved, "MilestoneStateUpdate: Invalid application state");
         require(_milestoneId < application.milestoneCount, "MilestoneStateUpdate: Invalid milestone id");
-        MilestoneState currentState = applicationMilestones[_applicationId][_milestoneId];
+        MilestoneState currentState = applicationMilestones[_applicationId][_milestoneId].state;
 
         if (currentState == MilestoneState.Submitted || currentState == MilestoneState.Requested) {
-            applicationMilestones[_applicationId][_milestoneId] = MilestoneState.Approved;
-
+            applicationMilestones[_applicationId][_milestoneId].state = MilestoneState.Approved;
+            applicationMilestones[_applicationId][_milestoneId].applicantHash = _reasonMetadataHash;
             string memory paymentType = IGrants(_grantAddress).getPaymentType();
 
             if(keccak256(abi.encodePacked("MILESTONE")) == keccak256(abi.encodePacked(paymentType))){
-                uint256 amount = IGrants(_grantAddress).getAmount();
-                IGrants(_grantAddress).payApplicant(application.owner,amount);
+                IGrants(_grantAddress).payApplicant(application.owner,application.milestonePayment[_milestoneId],_applicationId);
             }
         } else {
             revert("MilestoneStateUpdate: Invalid state transition");
@@ -247,9 +269,9 @@ contract ApplicationRegistry is Ownable,Pausable,IApplicationRegistry {
 
     }
 
-    function setGrantReg(IGrants _grantsReg) external onlyOwner {
-        grantsReg = _grantsReg;
-    }
+    // function setGrantReg(IGrants _grantsReg) external onlyOwner {
+    //     grantsReg = _grantsReg;
+    // }
 
     function getApplicationOwner(uint256 _applicationId) external view override returns (address) {
         Application memory application = applications[_applicationId];
@@ -261,4 +283,73 @@ contract ApplicationRegistry is Ownable,Pausable,IApplicationRegistry {
         return application.workspaceId;
     }
 
+    function getGrantApplications(address _grantAddress,uint256 _noOfApplications) external view returns (Application[] memory) {
+        Application[] memory grantApplications = new Application[](_noOfApplications);
+        uint256 ct = 0;
+        for(uint256 i = 0;i < applicationCount.current();i++){
+            Application memory application = applications[i];
+            if(application.grantAddress == _grantAddress){
+                grantApplications[ct] = application;
+                ct++;
+            }
+        }
+        return grantApplications;
+    }
+
+    function updateApplicationStateGrant(uint256 _applicationId,address _grantAddress) external override onlyGrantAdminOrReviewer(_grantAddress)  {
+        applications[_applicationId].state = ApplicationState.Resubmit;
+    }
+
+    function revertTransactions(uint256 _applicationId,address _grantAddress) external onlyGrantAdminOrReviewer(_grantAddress) {
+        for(uint256 i = 0;i < rejectAppPending.length;i++){
+            if(rejectAppPending[i].applicationId == _applicationId && applications[_applicationId].state == ApplicationState.Submitted){
+                applications[_applicationId].state = ApplicationState.Resubmit;
+                rejectAppPending[i] = rejectAppPending[rejectAppPending.length - 1];
+                rejectAppPending.pop();
+                emit ApplicationRejectStatusReverted(_applicationId,_grantAddress,block.timestamp,applications[_applicationId].state);
+                break;
+            }
+        }
+    }
+
+    function executeTransactions() external onlyOwner {
+        uint256 rejectAppPendingLength = rejectAppPending.length;
+        for(uint256 i = 0;i < rejectAppPendingLength;i++){
+            if(rejectAppPending[i].time < block.timestamp){
+                applications[i].state = ApplicationState.Rejected;
+                rejectAppPending[i] = rejectAppPending[rejectAppPendingLength - 1];
+                rejectAppPendingLength--;
+                rejectAppPending.pop();
+                i--;
+            }
+        }
+    }
+
+    function getApplicationDetail(uint256 _applicationId) external view returns (Application memory,address[] memory,uint256,string memory,MilestoneStateApp[] memory,string memory) {
+        Application memory application = applications[_applicationId];
+        address[] memory reviewers = IGrants(application.grantAddress).getReviewers();
+        string memory paymentType = IGrants(application.grantAddress).getPaymentType();
+        uint256 reviewersTimeStamp = IGrants(application.grantAddress).getPendingTransactioTimeStamp(_applicationId);
+        MilestoneStateApp[] memory milestoneStates = new MilestoneStateApp[](applications[_applicationId].milestonePayment.length);
+
+        for(uint256 i = 0;i < applications[_applicationId].milestonePayment.length;i++){
+            milestoneStates[i] = applicationMilestones[_applicationId][i];
+        }
+        string memory metadataHash = applicationsReasons[_applicationId];
+        return (application,reviewers,reviewersTimeStamp,paymentType,milestoneStates,metadataHash);
+    }
+
+    function fetchMyApplications() external view returns(Application[] memory,string[] memory,string[] memory){
+        string[] memory grantMetaDataHash = new string[](creatorApplicationMap[msg.sender].length);
+        string[] memory workspaceDataHash = new string[](creatorApplicationMap[msg.sender].length);
+
+        for(uint256 i = 0;i < creatorApplicationMap[msg.sender].length;i++){
+            string memory workspaceHash = workspaceReg.getMetaDataHash(creatorApplicationMap[msg.sender][i].workspaceId);
+            workspaceDataHash[i] = workspaceHash;
+            string memory grantHash = IGrants(creatorApplicationMap[msg.sender][i].grantAddress).getMetadataHash();
+            grantMetaDataHash[i] = grantHash;
+        }  
+        return (creatorApplicationMap[msg.sender],grantMetaDataHash,workspaceDataHash);
+    }
+    
 }

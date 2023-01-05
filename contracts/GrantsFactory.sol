@@ -15,6 +15,8 @@ contract GrantFactory is Ownable,Pausable,IGrantFactory {
 
     IWorkspaceRegistry public workspaceReg;
 
+    mapping(uint256 => address[]) workspaceGrantMap;
+
     event GrantCreated(
         address grantAddress,
         uint256 workspaceId,
@@ -49,16 +51,19 @@ contract GrantFactory is Ownable,Pausable,IGrantFactory {
     function createGrant(
         uint256 _workspaceId,
         string memory _metadataHash,
-        IWorkspaceRegistry _workspaceReg,
-        IApplicationRegistry _applicationReg,
+        address _workspaceReg,
+        address _applicationReg,
         address[] memory _reviewers,
         uint256 _amount,
         address _token,
         string memory _paymentType
     ) external whenNotPaused onlyWorkspaceAdmin(_workspaceId) returns (address) {
         
-        address _grantAddress = address(new Grant(_workspaceId,_metadataHash,_workspaceReg,_applicationReg,this,_reviewers,_amount,_token,_paymentType));
+        address _grantAddress = address(new Grant(_workspaceId,_metadataHash,_workspaceReg,_applicationReg,address(this),_reviewers,_amount,_token,_paymentType,0x7D04A724BCd6c0DBAf976BE9e9b89758c300E45A));
 
+        workspaceGrantMap[_workspaceId].push(_grantAddress);
+
+        workspaceReg.increaseGrantCount(_workspaceId);
         emit GrantCreated(
             _grantAddress,
             _workspaceId,
@@ -73,12 +78,12 @@ contract GrantFactory is Ownable,Pausable,IGrantFactory {
         address grantAddress,
         uint256 _workspaceId,
         IWorkspaceRegistry _workspaceReg,
-        string memory _metadataHash
+        string memory _metadataHash,
+        address[] memory _reviewers
     ) external onlyWorkspaceAdmin(_workspaceId) {
-        IGrants(grantAddress).updateGrant(_metadataHash);
+        IGrants(grantAddress).updateGrant(_metadataHash,_reviewers);
         bool active = IGrants(grantAddress).getActive();
-        address[] memory reviewers = IGrants(grantAddress).getReviewers();
-        emit GrantUpdatedFromFactory(grantAddress, _workspaceId, _metadataHash, active, block.timestamp,reviewers);
+        emit GrantUpdatedFromFactory(grantAddress, _workspaceId, _metadataHash, active, block.timestamp,_reviewers);
     }
 
     function updateGrantAccessibility(
@@ -109,5 +114,9 @@ contract GrantFactory is Ownable,Pausable,IGrantFactory {
 
     function unpause() external onlyOwner {
         _unpause();
+    }
+
+    function getWorkSpaceGrantMap(uint256 _workspaceId) external view returns (address[] memory){
+        return workspaceGrantMap[_workspaceId];
     }
 }

@@ -9,6 +9,7 @@ import "./interfaces/IGrants.sol";
 import "./interfaces/IGrantFactory.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "./interfaces/IApplicationRegistry.sol";
+import "./interfaces/IWorkSpaceRegistry.sol";
 
 // contract GrantsRegistry is Ownable,Pausable,IGrantsRegistry{
 //     struct Grant{
@@ -140,15 +141,24 @@ contract Grant is Ownable,Pausable,IGrants{
     uint256 amount;
     address token;
     string paymentType;
-    
-    IApplicationRegistry public applicationReg;
+    address daolensOwner;
+    address applicationReg;
+    address workspaceReg;
+    address grantFactory;
 
-    IWorkspaceRegistry public workspaceReg;
+    struct TransactionInitiated{
+        uint256 amountPay;
+        address to;
+        uint256 time;
+        uint256 applicationId;
+    }
 
-    IGrantFactory public grantFactory;
+    uint256 promisedAmount;
+    uint256 amountSpent;
+    TransactionInitiated[] pendingPayments;
 
     modifier onlyWorkspaceAdmin(uint256 _workspaceId) {
-        require(workspaceReg.isWorkspaceAdmin(_workspaceId, msg.sender), "Unauthorised: Not an admin");
+        require(IWorkspaceRegistry(workspaceReg).isWorkspaceAdmin(_workspaceId, msg.sender), "Unauthorised: Not an admin");
         _;
     }
     modifier checkBalance(
@@ -161,28 +171,41 @@ contract Grant is Ownable,Pausable,IGrants{
     }
 
     modifier onlyGrantFactory() {
-        require(msg.sender == address(grantFactory), "Unauthorised: Not being called from GrantFactory");
+        require(msg.sender == grantFactory, "Unauthorised: Not being called from GrantFactory");
         _;
     }
 
     modifier onlyApplicationRegistry() {
-        require(msg.sender == address(applicationReg), "Unauthorised: Not applicationRegistry");
+        require(msg.sender == applicationReg, "Unauthorised: Not applicationRegistry");
+        _;
+    }
+
+    modifier onlyDaolensOwner(){
+        require(msg.sender == daolensOwner, "Unauthorised: Not DaolensOwner");
+        _;
+    }
+
+    modifier onlyCreator(){
+        require(creator == msg.sender,"UnAuthorized Access");
         _;
     }
 
     event FundsWithdrawn(address asset, uint256 amount, address recipient, uint256 time);
-
+    event queuedTransaction(address grantAddress,uint256 amount,uint256 time,address to,uint256 applicationId);
+    event executeTransaction(address grantAddress,uint256 amount,uint256 time,address to,uint256 applicationId);
+    event revertTransaction(address grantAddress,uint256 amount,uint256 time,address to,uint256 applicationId);
 
     constructor(
         uint256 _workspaceId,
         string memory _metadataHash,
-        IWorkspaceRegistry _workspaceReg,
-        IApplicationRegistry _applicationReg,
-        IGrantFactory _grantFactory,
+        address _workspaceReg,
+        address _applicationReg,
+        address _grantFactory,
         address[] memory _reviewers,
         uint256 _amount,
         address _token,
-        string memory _paymentType
+        string memory _paymentType,
+        address _daolensOwner
     ){
         workspaceId = _workspaceId;
         active = true;
@@ -194,15 +217,17 @@ contract Grant is Ownable,Pausable,IGrants{
         amount = _amount;
         token = _token;
         paymentType = _paymentType;
+        daolensOwner = _daolensOwner;
     }
 
     function incrementApplicant() external onlyApplicationRegistry {
         numApplicants += 1;
     }
 
-    function updateGrant(string memory _metadataHash) external onlyGrantFactory {
+    function updateGrant(string memory _metadataHash,address[] memory _reviewers) external onlyGrantFactory {
         require(numApplicants == 0, "GrantUpdate: Applicants have already started applying");
         metadataHash = _metadataHash;
+        reviewers = _reviewers;
     }
 
     function updateGrantAccessibility(bool _canAcceptApplication) external onlyGrantFactory {
@@ -225,12 +250,13 @@ contract Grant is Ownable,Pausable,IGrants{
         return isAdminOrReviewer;
     }
 
-    function payApplicant(address _to,uint256 _amount) external onlyApplicationRegistry {
-        if(IERC20(token).balanceOf(address(this)) >= _amount){
-            IERC20(token).transfer(_to, _amount);
-            emit FundsWithdrawn(token,_amount,_to,block.timestamp);
+    function payApplicant(address _to,uint256 _amount,uint256 applicationId) external onlyApplicationRegistry {
+        uint256 remainBalance = this.getAmount() - promisedAmount;
+        if(remainBalance >= _amount){
+            this.queueTransactions(_to, _amount,applicationId);
+            promisedAmount += _amount;
         }
-        else revert("Something bad happened");
+        else revert("InSufficient Balance");
     }
 
     function getActive() external view returns (bool){
@@ -241,17 +267,83 @@ contract Grant is Ownable,Pausable,IGrants{
         return reviewers;
     }
 
-    function getPaymentType() external view returns (string memory){
+    function getPaymentType() external view override returns (string memory){
         return paymentType;
     }
 
     function getAmount() external view returns (uint256){
-        return amount;
+        return IERC20(token).balanceOf(address(this));
     }
 
     function getMetadataHash() external view returns (string memory){
         return metadataHash;
     }
 
+    function getDetails() external view returns (uint256,string memory,uint256,uint256){
+        uint256 balance = IERC20(token).balanceOf(address(this));
+        return (numApplicants,metadataHash,balance,amountSpent);
+    }
+
+    function getAllDetails() external view returns(string memory,bool,address,uint256,address[] memory,uint256,address,string memory){
+        return (metadataHash,active,creator,numApplicants,reviewers,amount,token,paymentType);
+    }
+
+    function queueTransactions(address _to,uint256 _amount,uint256 applicationId) external onlyCreator {   
+        pendingPayments.push(TransactionInitiated(_amount,_to,block.timestamp + 3 days,applicationId));
+        emit queuedTransaction(address(this), _amount,block.timestamp + 3 days, _to,applicationId);
+    }
+
+    function executeTransactions() external onlyDaolensOwner {
+        uint256 pendingTransactionLen = pendingPayments.length;
+
+        for(uint256 i = 0;i < pendingTransactionLen;i++){
+            TransactionInitiated memory transaction = pendingPayments[i];
+
+            if(transaction.time < block.timestamp){
+                IERC20(token).transfer(transaction.to, transaction.amountPay);
+                promisedAmount -= transaction.amountPay;
+                amountSpent += transaction.amountPay;
+                emit FundsWithdrawn(token,transaction.amountPay,transaction.to,block.timestamp);
+                emit executeTransaction(address(this), transaction.amountPay, block.timestamp, transaction.to,transaction.applicationId);
+
+                pendingPayments[i] = pendingPayments[pendingTransactionLen-1];
+                pendingTransactionLen--;
+                pendingPayments.pop();
+                i--;
+            }
+        }     
+    }
+
+    function revertTransactions(uint256 applicationId) external { 
+        if(this.isGrantAdminOrReviewer(msg.sender)){
+
+            for(uint256 i = 0;i < pendingPayments.length;i++){
+                if(pendingPayments[i].applicationId == applicationId){
+                    IApplicationRegistry(applicationReg).updateApplicationStateGrant(applicationId,address(this));
+                    promisedAmount -= pendingPayments[i].amountPay;
+                    
+                    emit revertTransaction(address(this),pendingPayments[i].amountPay , block.timestamp, pendingPayments[i].to,applicationId);
+                    pendingPayments[i] = pendingPayments[pendingPayments.length-1];
+                    pendingPayments.pop();
+                    break;
+                }
+
+            }
+        }
+        else revert("Not Authorized : RevertTransaction");
+    }
+
+    function getAmountSpent() external override view returns(uint256){
+        return amountSpent;
+    }
+
+    function getPendingTransactioTimeStamp(uint256 _applicationId) external override view returns(uint256){
+        for(uint256 i = 0;i < pendingPayments.length;i++){
+            if(pendingPayments[i].applicationId == _applicationId){
+                return pendingPayments[i].time;
+            }
+        }
+        return 1;
+    }
 }
  
