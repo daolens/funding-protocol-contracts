@@ -337,6 +337,10 @@ contract Grant is Ownable,Pausable,IGrants{
         return amountSpent;
     }
 
+    function getToken() external override view returns(address){
+        return token;
+    }
+
     function getPendingTransactioTimeStamp(uint256 _applicationId) external override view returns(uint256){
         for(uint256 i = 0;i < pendingPayments.length;i++){
             if(pendingPayments[i].applicationId == _applicationId){

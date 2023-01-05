@@ -26,6 +26,8 @@ interface IGrants {
 
     function getAmountSpent() external view returns(uint256);
 
+    function getToken() external view returns(address);
+
     function getPendingTransactioTimeStamp(uint256 _applicationId) external view returns(uint256);
 
 }
