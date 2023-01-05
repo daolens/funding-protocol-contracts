@@ -144,22 +144,27 @@ contract WorkspaceRegistry is Ownable,Pausable,IWorkspaceRegistry{
         return _checkRole(_id, _address, 0);
     }
 
-    function fetchWorkSpaces(address _grantFactory) external view returns (WorkSpace[] memory,uint256[] memory,uint256[] memory) {
-        uint256[] memory totalAmts = new uint256[](workSpacesArr.length);
-        uint256[] memory amtSpends = new uint256[](workSpacesArr.length);
+    function fetchWorkSpaces(address _grantFactory) external view returns (WorkSpace[] memory,uint256[][] memory,uint256[][] memory, address[][] memory) {
+        uint256[][] memory totalAmts = new uint256[][](workSpacesArr.length);
+        uint256[][] memory amtSpends = new uint256[][](workSpacesArr.length);
+        address[][] memory tokenAddress = new address[][](workSpacesArr.length);
 
         for(uint256 i = 0;i < workSpacesArr.length;i++){
             address[] memory grantAddress = IGrantFactory(_grantFactory).getWorkSpaceGrantMap(workSpacesArr[i].id);
-            uint256 totalAmt;
-            uint256 amtSpend;
+            uint256[] memory _totalAmts = new uint256[](grantAddress.length);
+            uint256[] memory _amtSpends = new uint256[](grantAddress.length);
+            address[] memory _tokenAddress = new address[](grantAddress.length);
+
             for(uint256 j = 0;j < grantAddress.length;j++){
-                totalAmt += IGrants(grantAddress[i]).getAmount();
-                amtSpend += IGrants(grantAddress[i]).getAmountSpent();
+                _totalAmts[j] = IGrants(grantAddress[j]).getAmount();
+                _amtSpends[j] = IGrants(grantAddress[j]).getAmountSpent();
+                _tokenAddress[j] = IGrants(grantAddress[j]).getToken();
             }
-            totalAmts[i] = totalAmt;
-            amtSpends[i] = amtSpend;
+            totalAmts[i] = _totalAmts;
+            amtSpends[i] = _amtSpends;
+            tokenAddress[i] = _tokenAddress;
         }
-        return (workSpacesArr,totalAmts,amtSpends);
+        return (workSpacesArr,totalAmts,amtSpends, tokenAddress);
     }
 
     function fetchWorkSpaceDetails(uint256 _id,address _grantFactory) external view returns (WorkSpace memory,Grant[] memory) {
