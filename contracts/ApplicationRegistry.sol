@@ -342,14 +342,16 @@ contract ApplicationRegistry is Ownable,Pausable,IApplicationRegistry {
     function fetchMyApplications() external view returns(Application[] memory,string[] memory,string[] memory){
         string[] memory grantMetaDataHash = new string[](creatorApplicationMap[msg.sender].length);
         string[] memory workspaceDataHash = new string[](creatorApplicationMap[msg.sender].length);
+        Application[] memory _applications = new Application[](creatorApplicationMap[msg.sender].length);
 
         for(uint256 i = 0;i < creatorApplicationMap[msg.sender].length;i++){
             string memory workspaceHash = workspaceReg.getMetaDataHash(creatorApplicationMap[msg.sender][i].workspaceId);
             workspaceDataHash[i] = workspaceHash;
             string memory grantHash = IGrants(creatorApplicationMap[msg.sender][i].grantAddress).getMetadataHash();
             grantMetaDataHash[i] = grantHash;
+            _applications[i] = applications[creatorApplicationMap[msg.sender][i].id];
         }  
-        return (creatorApplicationMap[msg.sender],grantMetaDataHash,workspaceDataHash);
+        return (_applications,grantMetaDataHash,workspaceDataHash);
     }
     
 }
