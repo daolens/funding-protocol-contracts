@@ -17,7 +17,9 @@ contract ApplicationRegistry is Ownable,Pausable,IApplicationRegistry {
         Resubmit,
         Approved,
         Rejected,
-        Complete
+        Complete,
+        RejectPending,
+        ApprovePending
     }
 
     enum MilestoneState {
@@ -183,6 +185,7 @@ contract ApplicationRegistry is Ownable,Pausable,IApplicationRegistry {
                 }
             }
             else {
+                application.state = ApplicationState.RejectPending;
                 rejectAppPending.push(RejectAppPend(_applicationId,block.timestamp + 3 days));
             }
             applicationsReasons[_applicationId] = _reasonMetadataHash;
@@ -300,9 +303,13 @@ contract ApplicationRegistry is Ownable,Pausable,IApplicationRegistry {
         applications[_applicationId].state = ApplicationState.Resubmit;
     }
 
+    function updateApplicationStateToApproveGrant(uint256 _applicationId,address _grantAddress) external override onlyGrantAdminOrReviewer(_grantAddress)  {
+        applications[_applicationId].state = ApplicationState.Approved;
+    }
+
     function revertTransactions(uint256 _applicationId,address _grantAddress) external onlyGrantAdminOrReviewer(_grantAddress) {
         for(uint256 i = 0;i < rejectAppPending.length;i++){
-            if(rejectAppPending[i].applicationId == _applicationId && applications[_applicationId].state == ApplicationState.Submitted){
+            if(rejectAppPending[i].applicationId == _applicationId && applications[_applicationId].state == ApplicationState.RejectPending){
                 applications[_applicationId].state = ApplicationState.Resubmit;
                 rejectAppPending[i] = rejectAppPending[rejectAppPending.length - 1];
                 rejectAppPending.pop();
