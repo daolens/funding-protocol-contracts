@@ -288,7 +288,7 @@ contract Grant is Ownable,Pausable,IGrants{
         return (metadataHash,active,creator,numApplicants,reviewers,amount,token,paymentType);
     }
 
-    function queueTransactions(address _to,uint256 _amount,uint256 applicationId) external onlyCreator {   
+    function queueTransactions(address _to,uint256 _amount,uint256 applicationId) external onlyApplicationRegistry {
         pendingPayments.push(TransactionInitiated(_amount,_to,block.timestamp + 3 days,applicationId));
         emit queuedTransaction(address(this), _amount,block.timestamp + 3 days, _to,applicationId);
     }
