@@ -303,10 +303,6 @@ contract ApplicationRegistry is Ownable,Pausable,IApplicationRegistry {
         applications[_applicationId].state = ApplicationState.Resubmit;
     }
 
-    function updateApplicationStateToApproveGrant(uint256 _applicationId,address _grantAddress) external override onlyGrantAdminOrReviewer(_grantAddress)  {
-        applications[_applicationId].state = ApplicationState.Approved;
-    }
-
     function revertTransactions(uint256 _applicationId,address _grantAddress) external onlyGrantAdminOrReviewer(_grantAddress) {
         for(uint256 i = 0;i < rejectAppPending.length;i++){
             if(rejectAppPending[i].applicationId == _applicationId && applications[_applicationId].state == ApplicationState.RejectPending){
