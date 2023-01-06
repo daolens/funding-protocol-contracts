@@ -312,7 +312,7 @@ contract ApplicationRegistry is Ownable,Pausable,IApplicationRegistry {
     function revertTransactions(uint256 _applicationId,address _grantAddress) external onlyGrantAdminOrReviewer(_grantAddress) {
         for(uint256 i = 0;i < rejectAppPending.length;i++){
             if(rejectAppPending[i].applicationId == _applicationId && applications[_applicationId].state == ApplicationState.RejectPending){
-                applications[_applicationId].state = ApplicationState.Resubmit;
+                applications[_applicationId].state = ApplicationState.Submitted;
                 rejectAppPending[i] = rejectAppPending[rejectAppPending.length - 1];
                 rejectAppPending.pop();
                 emit ApplicationRejectStatusReverted(_applicationId,_grantAddress,block.timestamp,applications[_applicationId].state);
