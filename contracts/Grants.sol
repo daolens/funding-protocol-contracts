@@ -9,6 +9,7 @@ import "./interfaces/IGrants.sol";
 import "./interfaces/IGrantFactory.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "./interfaces/IApplicationRegistry.sol";
+import "./ApplicationRegistry.sol";
 import "./interfaces/IWorkSpaceRegistry.sol";
 
 // contract GrantsRegistry is Ownable,Pausable,IGrantsRegistry{
@@ -303,6 +304,7 @@ contract Grant is Ownable,Pausable,IGrants{
                 IERC20(token).transfer(transaction.to, transaction.amountPay);
                 promisedAmount -= transaction.amountPay;
                 amountSpent += transaction.amountPay;
+                IApplicationRegistry(applicationReg).updateApplicationStateGrant(transaction.applicationId,address(this), ApplicationRegistry.ApplicationState.Approved);
                 emit FundsWithdrawn(token,transaction.amountPay,transaction.to,block.timestamp);
                 emit executeTransaction(address(this), transaction.amountPay, block.timestamp, transaction.to,transaction.applicationId);
 
@@ -319,7 +321,7 @@ contract Grant is Ownable,Pausable,IGrants{
 
             for(uint256 i = 0;i < pendingPayments.length;i++){
                 if(pendingPayments[i].applicationId == applicationId){
-                    IApplicationRegistry(applicationReg).updateApplicationStateGrant(applicationId,address(this));
+                    IApplicationRegistry(applicationReg).updateApplicationStateGrant(applicationId,address(this), ApplicationRegistry.ApplicationState.Rejected);
                     promisedAmount -= pendingPayments[i].amountPay;
                     
                     emit revertTransaction(address(this),pendingPayments[i].amountPay , block.timestamp, pendingPayments[i].to,applicationId);

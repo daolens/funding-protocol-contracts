@@ -181,6 +181,7 @@ contract ApplicationRegistry is Ownable,Pausable,IApplicationRegistry {
                 string memory paymentType = IGrants(_grantAddress).getPaymentType();
 
                 if(_state == ApplicationState.Approved && keccak256(abi.encodePacked("UPFRONT")) == keccak256(abi.encodePacked(paymentType))){
+                    application.state = ApplicationState.ApprovePending;
                     IGrants(_grantAddress).payApplicant(application.owner,application.totalFunds,_applicationId);
                 }
             }
@@ -299,8 +300,8 @@ contract ApplicationRegistry is Ownable,Pausable,IApplicationRegistry {
         return grantApplications;
     }
 
-    function updateApplicationStateGrant(uint256 _applicationId,address _grantAddress) external override onlyGrantAdminOrReviewer(_grantAddress)  {
-        applications[_applicationId].state = ApplicationState.Resubmit;
+    function updateApplicationStateGrant(uint256 _applicationId,address _grantAddress, ApplicationState _state) external override onlyGrantAdminOrReviewer(_grantAddress)  {
+        applications[_applicationId].state = _state;
     }
 
     function revertTransactions(uint256 _applicationId,address _grantAddress) external onlyGrantAdminOrReviewer(_grantAddress) {
