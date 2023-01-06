@@ -10,7 +10,7 @@ interface IGrants {
 
     function isGrantAdminOrReviewer(address _member) external view returns (bool);
 
-    function payApplicant(address _to,uint256 _amount,uint256 applicationId) external;
+    function payApplicant(address _to,uint256 _amount,uint256 applicationId, bool isMilestone, uint256 milestoneId) external;
 
     function getPaymentType() external view returns (string memory);
 

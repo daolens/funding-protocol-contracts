@@ -25,7 +25,8 @@ contract ApplicationRegistry is Ownable,Pausable,IApplicationRegistry {
     enum MilestoneState {
         Submitted,
         Requested,
-        Approved
+        Approved,
+        ApprovePending
     }
 
     struct Application {
@@ -182,7 +183,7 @@ contract ApplicationRegistry is Ownable,Pausable,IApplicationRegistry {
 
                 if(_state == ApplicationState.Approved && keccak256(abi.encodePacked("UPFRONT")) == keccak256(abi.encodePacked(paymentType))){
                     application.state = ApplicationState.ApprovePending;
-                    IGrants(_grantAddress).payApplicant(application.owner,application.totalFunds,_applicationId);
+                    IGrants(_grantAddress).payApplicant(application.owner,application.totalFunds,_applicationId, false, 0);
                 }
             }
             else {
@@ -248,12 +249,12 @@ contract ApplicationRegistry is Ownable,Pausable,IApplicationRegistry {
         MilestoneState currentState = applicationMilestones[_applicationId][_milestoneId].state;
 
         if (currentState == MilestoneState.Submitted || currentState == MilestoneState.Requested) {
-            applicationMilestones[_applicationId][_milestoneId].state = MilestoneState.Approved;
+            applicationMilestones[_applicationId][_milestoneId].state = MilestoneState.ApprovePending;
             applicationMilestones[_applicationId][_milestoneId].applicantHash = _reasonMetadataHash;
             string memory paymentType = IGrants(_grantAddress).getPaymentType();
 
             if(keccak256(abi.encodePacked("MILESTONE")) == keccak256(abi.encodePacked(paymentType))){
-                IGrants(_grantAddress).payApplicant(application.owner,application.milestonePayment[_milestoneId],_applicationId);
+                IGrants(_grantAddress).payApplicant(application.owner,application.milestonePayment[_milestoneId],_applicationId, true, _milestoneId);
             }
         } else {
             revert("MilestoneStateUpdate: Invalid state transition");
@@ -264,7 +265,7 @@ contract ApplicationRegistry is Ownable,Pausable,IApplicationRegistry {
         emit MilestoneUpdated(
             _applicationId,
             _milestoneId,
-            MilestoneState.Approved,
+            MilestoneState.ApprovePending,
             _reasonMetadataHash,
             block.timestamp,
             _grantAddress,
@@ -302,6 +303,10 @@ contract ApplicationRegistry is Ownable,Pausable,IApplicationRegistry {
 
     function updateApplicationStateGrant(uint256 _applicationId,address _grantAddress, ApplicationState _state) external override onlyGrantAdminOrReviewer(_grantAddress)  {
         applications[_applicationId].state = _state;
+    }
+
+    function updateMilestoneStateGrant(uint256 _applicationId, uint256 _milestoneId, address _grantAddress, MilestoneState _state) external override onlyGrantAdminOrReviewer(_grantAddress)  {
+        applicationMilestones[_applicationId][_milestoneId].state = _state;
     }
 
     function revertTransactions(uint256 _applicationId,address _grantAddress) external onlyGrantAdminOrReviewer(_grantAddress) {
