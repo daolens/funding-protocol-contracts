@@ -334,11 +334,22 @@ contract ApplicationRegistry is Ownable,Pausable,IApplicationRegistry {
         }
     }
 
+    function _getPendingTransactionTimeStamp(uint256 _applicationId) internal view returns(uint256){
+        for(uint256 i = 0;i < rejectAppPending.length;i++){
+            if(rejectAppPending[i].applicationId == _applicationId){
+                return rejectAppPending[i].time;
+            }
+        }
+        return 1;
+    }
+
     function getApplicationDetail(uint256 _applicationId) external view returns (Application memory,address[] memory,uint256,string memory,MilestoneStateApp[] memory,string memory) {
         Application memory application = applications[_applicationId];
         address[] memory reviewers = IGrants(application.grantAddress).getReviewers();
         string memory paymentType = IGrants(application.grantAddress).getPaymentType();
-        uint256 reviewersTimeStamp = IGrants(application.grantAddress).getPendingTransactioTimeStamp(_applicationId);
+        uint256  reviewersTimeStamp;
+        if (application.state == ApplicationState.ApprovePending) reviewersTimeStamp = IGrants(application.grantAddress).getPendingTransactioTimeStamp(_applicationId);
+        else if (application.state == ApplicationState.RejectPending) reviewersTimeStamp = _getPendingTransactionTimeStamp(_applicationId);
         MilestoneStateApp[] memory milestoneStates = new MilestoneStateApp[](applications[_applicationId].milestonePayment.length);
 
         for(uint256 i = 0;i < applications[_applicationId].milestonePayment.length;i++){
