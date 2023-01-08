@@ -96,9 +96,9 @@ contract ApplicationRegistry is Ownable,Pausable,IApplicationRegistry {
         _;
     }
 
-    modifier onlyParentGrant(address _grantAddress, uint256 _applicationId) {
+    modifier onlyParentGrant(uint256 _applicationId) {
         require(
-            applications[_applicationId].grantAddress == _grantAddress,
+            applications[_applicationId].grantAddress == msg.sender,
             "Unauthorised: Neither an admin nor a reviewer"
         );
         _;
@@ -309,11 +309,11 @@ contract ApplicationRegistry is Ownable,Pausable,IApplicationRegistry {
         return grantApplications;
     }
 
-    function updateApplicationStateGrant(uint256 _applicationId,address _grantAddress, ApplicationState _state) external override onlyParentGrant(_grantAddress, _applicationId)  {
+    function updateApplicationStateGrant(uint256 _applicationId, ApplicationState _state) external override onlyParentGrant(_applicationId)  {
         applications[_applicationId].state = _state;
     }
 
-    function updateMilestoneStateGrant(uint256 _applicationId, uint256 _milestoneId, address _grantAddress, MilestoneState _state) external override onlyParentGrant(_grantAddress, _applicationId)  {
+    function updateMilestoneStateGrant(uint256 _applicationId, uint256 _milestoneId, MilestoneState _state) external override onlyParentGrant(_applicationId)  {
         applicationMilestones[_applicationId][_milestoneId].state = _state;
     }
 

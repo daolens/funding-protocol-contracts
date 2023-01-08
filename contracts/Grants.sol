@@ -307,9 +307,9 @@ contract Grant is Ownable,Pausable,IGrants{
                 promisedAmount -= transaction.amountPay;
                 amountSpent += transaction.amountPay;
                 if (transaction.isMilestone)
-                    IApplicationRegistry(applicationReg).updateMilestoneStateGrant(transaction.applicationId, transaction.milestoneId ,address(this), ApplicationRegistry.MilestoneState.Approved);
+                    IApplicationRegistry(applicationReg).updateMilestoneStateGrant(transaction.applicationId, transaction.milestoneId, ApplicationRegistry.MilestoneState.Approved);
                 else
-                    IApplicationRegistry(applicationReg).updateApplicationStateGrant(transaction.applicationId,address(this), ApplicationRegistry.ApplicationState.Approved);
+                    IApplicationRegistry(applicationReg).updateApplicationStateGrant(transaction.applicationId, ApplicationRegistry.ApplicationState.Approved);
                 emit FundsWithdrawn(token,transaction.amountPay,transaction.to,block.timestamp);
                 emit executeTransaction(address(this), transaction.amountPay, block.timestamp, transaction.to,transaction.applicationId);
 
@@ -326,7 +326,7 @@ contract Grant is Ownable,Pausable,IGrants{
 
             for(uint256 i = 0;i < pendingPayments.length;i++){
                 if(pendingPayments[i].applicationId == applicationId){
-                    IApplicationRegistry(applicationReg).updateApplicationStateGrant(applicationId,address(this), ApplicationRegistry.ApplicationState.Rejected);
+                    IApplicationRegistry(applicationReg).updateApplicationStateGrant(applicationId, ApplicationRegistry.ApplicationState.Rejected);
                     promisedAmount -= pendingPayments[i].amountPay;
                     
                     emit revertTransaction(address(this),pendingPayments[i].amountPay , block.timestamp, pendingPayments[i].to,applicationId);
