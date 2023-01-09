@@ -100,7 +100,7 @@ contract ApplicationRegistry is Ownable,Pausable,IApplicationRegistry {
     modifier onlyParentGrant(uint256 _applicationId) {
         require(
             applications[_applicationId].grantAddress == msg.sender,
-            "Unauthorised: Neither an admin nor a reviewer"
+            "Unauthorised: not parent grant"
         );
         _;
     }
