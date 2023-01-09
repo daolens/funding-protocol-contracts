@@ -255,7 +255,7 @@ contract ApplicationRegistry is Ownable,Pausable,IApplicationRegistry {
         Application storage application = applications[_applicationId];
         require(application.workspaceId == _workspaceId, "ApplicationStateUpdate: Invalid workspace");
         require(application.state == ApplicationState.Approved, "MilestoneStateUpdate: Invalid application state");
-        require(_milestoneId < application.milestoneCount, "MilestoneStateUpdate: Invalid milestone id");
+        require(_milestoneId < application.milestoneCount && _milestoneId >= 0, "MilestoneStateUpdate: Invalid milestone id");
         MilestoneState currentState = applicationMilestones[_applicationId][_milestoneId].state;
 
         if (currentState == MilestoneState.Submitted || currentState == MilestoneState.Requested) {
@@ -294,7 +294,7 @@ contract ApplicationRegistry is Ownable,Pausable,IApplicationRegistry {
         Application storage application = applications[_applicationId];
         require(application.workspaceId == _workspaceId, "ApplicationStateUpdate: Invalid workspace");
         require(application.state == ApplicationState.Approved, "MilestoneStateUpdate: Invalid application state");
-        require(_milestoneId < application.milestoneCount, "MilestoneStateUpdate: Invalid milestone id");
+        require(_milestoneId < application.milestoneCount && _milestoneId >= 0, "MilestoneStateUpdate: Invalid milestone id");
         MilestoneState currentState = applicationMilestones[_applicationId][_milestoneId].state;
 
         if (currentState == MilestoneState.Submitted || currentState == MilestoneState.Requested) {
