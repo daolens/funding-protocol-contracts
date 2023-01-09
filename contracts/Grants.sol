@@ -9,6 +9,7 @@ import "./interfaces/IGrants.sol";
 import "./interfaces/IGrantFactory.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "./interfaces/IApplicationRegistry.sol";
+import "./ApplicationRegistry.sol";
 import "./interfaces/IWorkSpaceRegistry.sol";
 
 // contract GrantsRegistry is Ownable,Pausable,IGrantsRegistry{
@@ -151,6 +152,8 @@ contract Grant is Ownable,Pausable,IGrants{
         address to;
         uint256 time;
         uint256 applicationId;
+        bool isMilestone;
+        uint256 milestoneId;
     }
 
     uint256 promisedAmount;
@@ -250,10 +253,10 @@ contract Grant is Ownable,Pausable,IGrants{
         return isAdminOrReviewer;
     }
 
-    function payApplicant(address _to,uint256 _amount,uint256 applicationId) external onlyApplicationRegistry {
+    function payApplicant(address _to,uint256 _amount,uint256 applicationId, bool isMilestone, uint256 milestoneId) external onlyApplicationRegistry {
         uint256 remainBalance = this.getAmount() - promisedAmount;
         if(remainBalance >= _amount){
-            this.queueTransactions(_to, _amount,applicationId);
+            _queueTransactions(_to, _amount,applicationId, isMilestone, milestoneId);
             promisedAmount += _amount;
         }
         else revert("InSufficient Balance");
@@ -288,8 +291,8 @@ contract Grant is Ownable,Pausable,IGrants{
         return (metadataHash,active,creator,numApplicants,reviewers,amount,token,paymentType);
     }
 
-    function queueTransactions(address _to,uint256 _amount,uint256 applicationId) external onlyApplicationRegistry {
-        pendingPayments.push(TransactionInitiated(_amount,_to,block.timestamp + 3 days,applicationId));
+    function _queueTransactions(address _to,uint256 _amount,uint256 applicationId, bool isMilestone, uint256 milestoneId) internal {
+        pendingPayments.push(TransactionInitiated(_amount,_to,block.timestamp + 3 days,applicationId, isMilestone, milestoneId));
         emit queuedTransaction(address(this), _amount,block.timestamp + 3 days, _to,applicationId);
     }
 
@@ -303,6 +306,10 @@ contract Grant is Ownable,Pausable,IGrants{
                 IERC20(token).transfer(transaction.to, transaction.amountPay);
                 promisedAmount -= transaction.amountPay;
                 amountSpent += transaction.amountPay;
+                if (transaction.isMilestone)
+                    IApplicationRegistry(applicationReg).updateMilestoneStateGrant(transaction.applicationId, transaction.milestoneId, ApplicationRegistry.MilestoneState.Approved);
+                else
+                    IApplicationRegistry(applicationReg).updateApplicationStateGrant(transaction.applicationId, ApplicationRegistry.ApplicationState.Approved);
                 emit FundsWithdrawn(token,transaction.amountPay,transaction.to,block.timestamp);
                 emit executeTransaction(address(this), transaction.amountPay, block.timestamp, transaction.to,transaction.applicationId);
 
@@ -319,7 +326,7 @@ contract Grant is Ownable,Pausable,IGrants{
 
             for(uint256 i = 0;i < pendingPayments.length;i++){
                 if(pendingPayments[i].applicationId == applicationId){
-                    IApplicationRegistry(applicationReg).updateApplicationStateGrant(applicationId,address(this));
+                    IApplicationRegistry(applicationReg).updateApplicationStateGrant(applicationId, ApplicationRegistry.ApplicationState.Rejected);
                     promisedAmount -= pendingPayments[i].amountPay;
                     
                     emit revertTransaction(address(this),pendingPayments[i].amountPay , block.timestamp, pendingPayments[i].to,applicationId);

@@ -17,13 +17,16 @@ contract ApplicationRegistry is Ownable,Pausable,IApplicationRegistry {
         Resubmit,
         Approved,
         Rejected,
-        Complete
+        Complete,
+        RejectPending,
+        ApprovePending
     }
 
     enum MilestoneState {
         Submitted,
         Requested,
-        Approved
+        Approved,
+        ApprovePending
     }
 
     struct Application {
@@ -88,6 +91,14 @@ contract ApplicationRegistry is Ownable,Pausable,IApplicationRegistry {
     modifier onlyGrantAdminOrReviewer(address _grantAddress) {
         require(
             IGrants(_grantAddress).isGrantAdminOrReviewer(msg.sender),
+            "Unauthorised: Neither an admin nor a reviewer"
+        );
+        _;
+    }
+
+    modifier onlyParentGrant(uint256 _applicationId) {
+        require(
+            applications[_applicationId].grantAddress == msg.sender,
             "Unauthorised: Neither an admin nor a reviewer"
         );
         _;
@@ -179,10 +190,12 @@ contract ApplicationRegistry is Ownable,Pausable,IApplicationRegistry {
                 string memory paymentType = IGrants(_grantAddress).getPaymentType();
 
                 if(_state == ApplicationState.Approved && keccak256(abi.encodePacked("UPFRONT")) == keccak256(abi.encodePacked(paymentType))){
-                    IGrants(_grantAddress).payApplicant(application.owner,application.totalFunds,_applicationId);
+                    application.state = ApplicationState.ApprovePending;
+                    IGrants(_grantAddress).payApplicant(application.owner,application.totalFunds,_applicationId, false, 0);
                 }
             }
             else {
+                application.state = ApplicationState.RejectPending;
                 rejectAppPending.push(RejectAppPend(_applicationId,block.timestamp + 3 days));
             }
             applicationsReasons[_applicationId] = _reasonMetadataHash;
@@ -244,12 +257,12 @@ contract ApplicationRegistry is Ownable,Pausable,IApplicationRegistry {
         MilestoneState currentState = applicationMilestones[_applicationId][_milestoneId].state;
 
         if (currentState == MilestoneState.Submitted || currentState == MilestoneState.Requested) {
-            applicationMilestones[_applicationId][_milestoneId].state = MilestoneState.Approved;
-            applicationMilestones[_applicationId][_milestoneId].applicantHash = _reasonMetadataHash;
+            applicationMilestones[_applicationId][_milestoneId].state = MilestoneState.ApprovePending;
+            applicationMilestones[_applicationId][_milestoneId].reviewersHash = _reasonMetadataHash;
             string memory paymentType = IGrants(_grantAddress).getPaymentType();
 
             if(keccak256(abi.encodePacked("MILESTONE")) == keccak256(abi.encodePacked(paymentType))){
-                IGrants(_grantAddress).payApplicant(application.owner,application.milestonePayment[_milestoneId],_applicationId);
+                IGrants(_grantAddress).payApplicant(application.owner,application.milestonePayment[_milestoneId],_applicationId, true, _milestoneId);
             }
         } else {
             revert("MilestoneStateUpdate: Invalid state transition");
@@ -260,7 +273,7 @@ contract ApplicationRegistry is Ownable,Pausable,IApplicationRegistry {
         emit MilestoneUpdated(
             _applicationId,
             _milestoneId,
-            MilestoneState.Approved,
+            MilestoneState.ApprovePending,
             _reasonMetadataHash,
             block.timestamp,
             _grantAddress,
@@ -296,14 +309,18 @@ contract ApplicationRegistry is Ownable,Pausable,IApplicationRegistry {
         return grantApplications;
     }
 
-    function updateApplicationStateGrant(uint256 _applicationId,address _grantAddress) external override onlyGrantAdminOrReviewer(_grantAddress)  {
-        applications[_applicationId].state = ApplicationState.Resubmit;
+    function updateApplicationStateGrant(uint256 _applicationId, ApplicationState _state) external override onlyParentGrant(_applicationId)  {
+        applications[_applicationId].state = _state;
+    }
+
+    function updateMilestoneStateGrant(uint256 _applicationId, uint256 _milestoneId, MilestoneState _state) external override onlyParentGrant(_applicationId)  {
+        applicationMilestones[_applicationId][_milestoneId].state = _state;
     }
 
     function revertTransactions(uint256 _applicationId,address _grantAddress) external onlyGrantAdminOrReviewer(_grantAddress) {
         for(uint256 i = 0;i < rejectAppPending.length;i++){
-            if(rejectAppPending[i].applicationId == _applicationId && applications[_applicationId].state == ApplicationState.Submitted){
-                applications[_applicationId].state = ApplicationState.Resubmit;
+            if(rejectAppPending[i].applicationId == _applicationId && applications[_applicationId].state == ApplicationState.RejectPending){
+                applications[_applicationId].state = ApplicationState.Submitted;
                 rejectAppPending[i] = rejectAppPending[rejectAppPending.length - 1];
                 rejectAppPending.pop();
                 emit ApplicationRejectStatusReverted(_applicationId,_grantAddress,block.timestamp,applications[_applicationId].state);
@@ -325,11 +342,22 @@ contract ApplicationRegistry is Ownable,Pausable,IApplicationRegistry {
         }
     }
 
+    function _getPendingTransactionTimeStamp(uint256 _applicationId) internal view returns(uint256){
+        for(uint256 i = 0;i < rejectAppPending.length;i++){
+            if(rejectAppPending[i].applicationId == _applicationId){
+                return rejectAppPending[i].time;
+            }
+        }
+        return 1;
+    }
+
     function getApplicationDetail(uint256 _applicationId) external view returns (Application memory,address[] memory,uint256,string memory,MilestoneStateApp[] memory,string memory) {
         Application memory application = applications[_applicationId];
         address[] memory reviewers = IGrants(application.grantAddress).getReviewers();
         string memory paymentType = IGrants(application.grantAddress).getPaymentType();
-        uint256 reviewersTimeStamp = IGrants(application.grantAddress).getPendingTransactioTimeStamp(_applicationId);
+        uint256  reviewersTimeStamp;
+        if (application.state == ApplicationState.ApprovePending) reviewersTimeStamp = IGrants(application.grantAddress).getPendingTransactioTimeStamp(_applicationId);
+        else if (application.state == ApplicationState.RejectPending) reviewersTimeStamp = _getPendingTransactionTimeStamp(_applicationId);
         MilestoneStateApp[] memory milestoneStates = new MilestoneStateApp[](applications[_applicationId].milestonePayment.length);
 
         for(uint256 i = 0;i < applications[_applicationId].milestonePayment.length;i++){
