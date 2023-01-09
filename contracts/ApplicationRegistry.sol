@@ -26,7 +26,8 @@ contract ApplicationRegistry is Ownable,Pausable,IApplicationRegistry {
         Submitted,
         Requested,
         Approved,
-        ApprovePending
+        ApprovePending,
+        Resumbit
     }
 
     struct Application {
@@ -99,7 +100,7 @@ contract ApplicationRegistry is Ownable,Pausable,IApplicationRegistry {
     modifier onlyParentGrant(uint256 _applicationId) {
         require(
             applications[_applicationId].grantAddress == msg.sender,
-            "Unauthorised: Neither an admin nor a reviewer"
+            "Unauthorised: not parent grant"
         );
         _;
     }
@@ -224,8 +225,9 @@ contract ApplicationRegistry is Ownable,Pausable,IApplicationRegistry {
         require(application.owner == msg.sender, "MilestoneStateUpdate: Unauthorised");
         require(application.state == ApplicationState.Approved, "MilestoneStateUpdate: Invalid application state");
         require(_milestoneId < application.milestoneCount, "MilestoneStateUpdate: Invalid milestone id");
+        MilestoneState currentState = applicationMilestones[_applicationId][_milestoneId].state;
         require(
-            applicationMilestones[_applicationId][_milestoneId].state == MilestoneState.Submitted,
+           currentState == MilestoneState.Submitted || currentState == MilestoneState.Resumbit,
             "MilestoneStateUpdate: Invalid state transition"
         );
         applicationMilestones[_applicationId][_milestoneId].state = MilestoneState.Requested;
@@ -253,10 +255,9 @@ contract ApplicationRegistry is Ownable,Pausable,IApplicationRegistry {
         Application storage application = applications[_applicationId];
         require(application.workspaceId == _workspaceId, "ApplicationStateUpdate: Invalid workspace");
         require(application.state == ApplicationState.Approved, "MilestoneStateUpdate: Invalid application state");
-        require(_milestoneId < application.milestoneCount, "MilestoneStateUpdate: Invalid milestone id");
-        MilestoneState currentState = applicationMilestones[_applicationId][_milestoneId].state;
+        require(_milestoneId < application.milestoneCount && _milestoneId >= 0, "MilestoneStateUpdate: Invalid milestone id");
 
-        if (currentState == MilestoneState.Submitted || currentState == MilestoneState.Requested) {
+        if (applicationMilestones[_applicationId][_milestoneId].state == MilestoneState.Submitted || applicationMilestones[_applicationId][_milestoneId].state == MilestoneState.Requested) {
             applicationMilestones[_applicationId][_milestoneId].state = MilestoneState.ApprovePending;
             applicationMilestones[_applicationId][_milestoneId].reviewersHash = _reasonMetadataHash;
             string memory paymentType = IGrants(_grantAddress).getPaymentType();
@@ -282,9 +283,35 @@ contract ApplicationRegistry is Ownable,Pausable,IApplicationRegistry {
 
     }
 
-    // function setGrantReg(IGrants _grantsReg) external onlyOwner {
-    //     grantsReg = _grantsReg;
-    // }
+    function submitMilestoneFeedback(
+        uint256 _applicationId,
+        uint256 _milestoneId,
+        uint256 _workspaceId,
+        address _grantAddress,
+        string memory _feedbackMetadataHash
+    ) external onlyGrantAdminOrReviewer(_grantAddress) {
+        Application storage application = applications[_applicationId];
+        require(application.workspaceId == _workspaceId, "ApplicationStateUpdate: Invalid workspace");
+        require(application.state == ApplicationState.Approved, "MilestoneStateUpdate: Invalid application state");
+        require(_milestoneId < application.milestoneCount && _milestoneId >= 0, "MilestoneStateUpdate: Invalid milestone id");
+
+        if (applicationMilestones[_applicationId][_milestoneId].state == MilestoneState.Submitted || applicationMilestones[_applicationId][_milestoneId].state == MilestoneState.Requested) {
+            applicationMilestones[_applicationId][_milestoneId].state = MilestoneState.Resumbit;
+            applicationMilestones[_applicationId][_milestoneId].reviewersHash = _feedbackMetadataHash;
+        } else {
+            revert("MilestoneStateUpdate: Invalid state transition");
+        }
+
+        emit MilestoneUpdated(
+            _applicationId,
+            _milestoneId,
+            MilestoneState.Resumbit,
+            _feedbackMetadataHash,
+            block.timestamp,
+            _grantAddress,
+            _workspaceId
+        );
+    }
 
     function getApplicationOwner(uint256 _applicationId) external view override returns (address) {
         Application memory application = applications[_applicationId];
