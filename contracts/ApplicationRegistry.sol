@@ -341,6 +341,8 @@ contract ApplicationRegistry is Ownable,Pausable,IApplicationRegistry {
     }
 
     function updateMilestoneStateGrant(uint256 _applicationId, uint256 _milestoneId, MilestoneState _state) external override onlyParentGrant(_applicationId)  {
+        if (applicationMilestones[_applicationId][_milestoneId].state == _state) return;
+        if (applicationMilestones[_applicationId][_milestoneId].state == MilestoneState.ApprovePending) applications[_applicationId].milestonesDone -= 1;
         applicationMilestones[_applicationId][_milestoneId].state = _state;
     }
 
