@@ -342,7 +342,7 @@ contract Grant is Ownable,Pausable,IGrants{
         else revert("Not Authorized : RevertTransaction");
     }
 
-    function revertMilestoneTransactions(uint256 applicationId, uint milestoneId) external { 
+    function revertMilestoneTransactions(uint256 applicationId, uint256 milestoneId) external { 
         if(this.isGrantAdminOrReviewer(msg.sender)){
 
             for(uint256 i = 0;i < pendingPayments.length;i++){
