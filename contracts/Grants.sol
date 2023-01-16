@@ -197,6 +197,8 @@ contract Grant is Ownable,Pausable,IGrants{
     event queuedTransaction(address grantAddress,uint256 amount,uint256 time,address to,uint256 applicationId);
     event executeTransaction(address grantAddress,uint256 amount,uint256 time,address to,uint256 applicationId);
     event revertTransaction(address grantAddress,uint256 amount,uint256 time,address to,uint256 applicationId);
+    event revertMilestoneTransaction(address grantAddress,uint256 amount,uint256 time,address to,uint256 applicationId, uint256 milestoneId);
+
 
     constructor(
         uint256 _workspaceId,
@@ -328,8 +330,28 @@ contract Grant is Ownable,Pausable,IGrants{
                 if(pendingPayments[i].applicationId == applicationId){
                     IApplicationRegistry(applicationReg).updateApplicationStateGrant(applicationId, ApplicationRegistry.ApplicationState.Rejected);
                     promisedAmount -= pendingPayments[i].amountPay;
-                    
+
                     emit revertTransaction(address(this),pendingPayments[i].amountPay , block.timestamp, pendingPayments[i].to,applicationId);
+                    pendingPayments[i] = pendingPayments[pendingPayments.length-1];
+                    pendingPayments.pop();
+                    break;
+                }
+
+            }
+        }
+        else revert("Not Authorized : RevertTransaction");
+    }
+
+    function revertMilestoneTransactions(uint256 applicationId, uint256 milestoneId) external { 
+        if(this.isGrantAdminOrReviewer(msg.sender)){
+
+            for(uint256 i = 0;i < pendingPayments.length;i++){
+                if (!pendingPayments[i].isMilestone) continue;
+                if(pendingPayments[i].applicationId == applicationId && pendingPayments[i].milestoneId == milestoneId){
+                    IApplicationRegistry(applicationReg).updateMilestoneStateGrant(applicationId, milestoneId, ApplicationRegistry.MilestoneState.Requested);
+                    promisedAmount -= pendingPayments[i].amountPay;
+
+                    emit revertMilestoneTransaction(address(this), pendingPayments[i].amountPay, block.timestamp, pendingPayments[i].to, applicationId, milestoneId);
                     pendingPayments[i] = pendingPayments[pendingPayments.length-1];
                     pendingPayments.pop();
                     break;
