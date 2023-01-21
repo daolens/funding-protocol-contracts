@@ -1,6 +1,13 @@
 async function deployContract() {
+
+    const [deployer] = await ethers.getSigners();
+
+    console.log("Deploying contracts with the account:", deployer.address);
+  
+    console.log("Account balance:", (await deployer.getBalance()).toString());
+  
     const WORKSPACEREGISTRY = await ethers.getContractFactory("WorkspaceRegistry")
-    const deployWORKSPACEREGISTRY = await WORKSPACEREGISTRY.deploy()
+    const deployWORKSPACEREGISTRY = await WORKSPACEREGISTRY.deploy();
     await deployWORKSPACEREGISTRY.deployed()
     let txHash = deployWORKSPACEREGISTRY.deployTransaction.hash
     let txReceipt = await ethers.provider.waitForTransaction(txHash)

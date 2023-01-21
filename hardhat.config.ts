@@ -4,7 +4,7 @@
 */
 require("@nomiclabs/hardhat-ethers");
 require('dotenv').config();
-const { PRIVATE_KEY,API_URL_POLYGON_MUMBAI,API_URL_GOERLI } = process.env;
+const { PRIVATE_KEY,API_URL_POLYGON_MUMBAI,API_URL_GOERLI,API_URL,API_URL_ETH,ETHERSCAN_API_KEY } = process.env;
 
 module.exports = {
   defaultNetwork: "PolygonMumbai",
@@ -18,6 +18,14 @@ module.exports = {
     goerli : {
       url: API_URL_GOERLI,
       accounts: [PRIVATE_KEY]
+    },
+    Polygon : {
+      url : API_URL,
+      accounts : [PRIVATE_KEY]
+    },
+    ETH : {
+      url : API_URL_ETH,
+      accounts : [PRIVATE_KEY]
     }
   },
   solidity: {
@@ -30,7 +38,7 @@ module.exports = {
     }
   },
   etherscan: {
-    apiKey: "IAW3WXAPPPE6M1W8VHS1B33S1ZW748596K",
+    apiKey: ETHERSCAN_API_KEY,
   },
 
 }

@@ -328,7 +328,7 @@ contract Grant is Ownable,Pausable,IGrants{
 
             for(uint256 i = 0;i < pendingPayments.length;i++){
                 if(pendingPayments[i].applicationId == applicationId){
-                    IApplicationRegistry(applicationReg).updateApplicationStateGrant(applicationId, ApplicationRegistry.ApplicationState.Rejected);
+                    IApplicationRegistry(applicationReg).updateApplicationStateGrant(applicationId, ApplicationRegistry.ApplicationState.Submitted);
                     promisedAmount -= pendingPayments[i].amountPay;
 
                     emit revertTransaction(address(this),pendingPayments[i].amountPay , block.timestamp, pendingPayments[i].to,applicationId);

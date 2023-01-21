@@ -1,9 +1,9 @@
-const CONTRACT_ADDRESS = "0x3927c7b60076c8Da6ca8B2559aAeb33c87F92aFF"
+const CONTRACT_ADDRESS = "0x74378f07F6B5d4B538556964F8b545Bb2d876690"
 
 async function mintNFT(contractAddress) {
    const WorkspaceRegistry = await ethers.getContractFactory("WorkspaceRegistry")
    const [owner] = await ethers.getSigners()
-   console.log(await WorkspaceRegistry.attach(contractAddress).fetchWorkSpaces("0xaFE66D8156e9B66656B9e867530909e48E85ffbB"));
+   console.log(await WorkspaceRegistry.attach(contractAddress).fetchWorkSpaces("0x5B0Ef75235376d2A6FDcbE936CDad35D07fD8323"));
 //    const txx = await tx.wait();
 //    console.log(txx.events[0].args);
     // console.log(await WorkspaceRegistry.attach(contractAddress).submitApplication(
